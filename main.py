@@ -7,6 +7,7 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Iterator
+from passlib.context import CryptContext
 
 from sqlalchemy import create_engine, Column, Integer, String, text
 from sqlalchemy.orm import sessionmaker,  Session
@@ -33,6 +34,9 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 # Create a declarative base
 Base = declarative_base()
 
+# Password hashing
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
 # Define the user data model for the database table
 class User(Base):
     __tablename__ = "users"
@@ -44,8 +48,9 @@ class User(Base):
 Base.metadata.create_all(bind=engine)
 
 # Define the data model for the incoming request
-class EmailCreate(BaseModel):
+class UserCreate(BaseModel):
     email: str
+    password: str
 
 # Dependency to get a new database session for each request
 def get_db() -> Iterator[Session]:
@@ -76,18 +81,22 @@ def health(db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"unhealthy: {e}")
 
-# API endpoint to create a new user with an email
+# API endpoint to create a new user with email and password
 @app.post("/users/", status_code=status.HTTP_201_CREATED)
-def create_user(user_data: EmailCreate, db: Session = Depends(get_db)):
+def create_user(user_data: UserCreate, db: Session = Depends(get_db)):
     """
-    Receives an email address and saves it to the 'users' table.
+    Receives an email and password, hashes the password, and saves to the 'users' table.
     """
     try:
-        new_user = User(email=user_data.email)
+        # Hash the password
+        hashed_password = pwd_context.hash(user_data.password)
+        
+        # Create user with hashed password
+        new_user = User(email=user_data.email, hashed_password=hashed_password)
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
-        return {"message": "Email saved successfully!", "user": new_user}
+        return {"message": "User created successfully!", "user": {"id": new_user.id, "email": new_user.email}}
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=f"Error saving user: {e}")
