@@ -52,6 +52,10 @@ class UserCreate(BaseModel):
     email: str
     password: str
 
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
 # Dependency to get a new database session for each request
 def get_db() -> Iterator[Session]:
     db = SessionLocal()
@@ -100,3 +104,41 @@ def create_user(user_data: UserCreate, db: Session = Depends(get_db)):
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=f"Error saving user: {e}")
+
+# API endpoint to login user
+@app.post("/auth/login", status_code=status.HTTP_200_OK)
+def login_user(user_data: UserLogin, db: Session = Depends(get_db)):
+    """
+    Authenticates user by checking email and password.
+    """
+    try:
+        # Find user by email
+        user = db.query(User).filter(User.email == user_data.email).first()
+        
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid email or password"
+            )
+        
+        # Verify password
+        if not pwd_context.verify(user_data.password, user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid email or password"
+            )
+        
+        # Login successful
+        return {
+            "message": "Login successful!",
+            "user": {
+                "id": user.id,
+                "email": user.email
+            }
+        }
+    
+    except HTTPException:
+        # Re-raise HTTP exceptions (like 401 Unauthorized)
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
