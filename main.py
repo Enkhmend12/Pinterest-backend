@@ -99,16 +99,21 @@ def send_verification_email(email: str, code: str):
         
         # Email body
         body = f"""
-        Hi there!
-        
-        Your Pinterest verification code is: {code}
-        
-        This code will expire in 10 minutes.
-        
-        If you didn't request this code, please ignore this email.
-        
-        Best regards,
-        Pinterest Team
+Hi there!
+
+Welcome to Pinterest! Please use the following verification code to complete your account setup:
+
+🔑 Verification Code: {code}
+
+This code will expire in 10 minutes for your security.
+
+If you didn't create a Pinterest account, please ignore this email.
+
+Best regards,
+The Pinterest Team
+
+---
+This is an automated message. Please do not reply to this email.
         """
         
         msg.attach(MIMEText(body, 'plain'))
