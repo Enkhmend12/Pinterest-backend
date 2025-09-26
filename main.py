@@ -142,3 +142,25 @@ def login_user(user_data: UserLogin, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
+
+# API endpoint to check if email exists in database
+@app.post("/check-email", status_code=status.HTTP_200_OK)
+def check_email_exists(user_data: dict, db: Session = Depends(get_db)):
+    """
+    Checks if an email already exists in the database.
+    """
+    try:
+        email = user_data.get('email')
+        if not email:
+            raise HTTPException(status_code=400, detail="Email is required")
+        
+        # Check if user exists
+        existing_user = db.query(User).filter(User.email == email).first()
+        
+        return {
+            "exists": existing_user is not None,
+            "message": "Email checked successfully"
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error checking email: {e}")
