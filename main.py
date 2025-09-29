@@ -91,7 +91,7 @@ def send_verification_email(email: str, code: str):
         
         # Email data
         email_data = {
-            "from": "Pinterest <onboarding@resend.dev>",  # Resend's default sender
+            "from": "Pinterest <ekawacoolest@gmail.com>",  # Your verified email
             "to": [email],
             "subject": "Pinterest - Email Verification Code",
             "html": f"""
