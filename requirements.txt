@@ -10,3 +10,4 @@ pydantic==2.9.2
 pydantic[email]
 alembic==1.16.5
 python-dotenv==1.1.1
+requests==2.31.0

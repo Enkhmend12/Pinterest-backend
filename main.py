@@ -4,10 +4,8 @@
 import os
 import sys
 import random
-import smtplib
+import requests
 from datetime import datetime, timedelta
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -25,11 +23,8 @@ load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-insecure-secret-change")
 
-# Email configuration
-EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
-EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
-EMAIL_USER = os.getenv("EMAIL_USER")  # Your Gmail address
-EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")  # Your Gmail app password
+# Email configuration with Resend
+RESEND_API_KEY = os.getenv("RESEND_API_KEY")  # Your Resend API key
 
 # Ensure the database URL is set
 if not DATABASE_URL:
@@ -83,53 +78,74 @@ class VerifyCodeRequest(BaseModel):
     email: str
     code: str
 
-# Email sending function
+# Email sending function with Resend
 def send_verification_email(email: str, code: str):
-    """Send verification code via email"""
+    """Send verification code via email using Resend"""
     try:
-        if not EMAIL_USER or not EMAIL_PASSWORD:
-            print("Warning: Email credentials not configured")
+        if not RESEND_API_KEY:
+            print("Warning: Resend API key not configured")
             return False
             
-        # Create message
-        msg = MIMEMultipart()
-        msg['From'] = EMAIL_USER
-        msg['To'] = email
-        msg['Subject'] = "Pinterest - Email Verification Code"
+        # Resend API endpoint
+        url = "https://api.resend.com/emails"
         
-        # Email body
-        body = f"""
-Hi there!
-
-Welcome to Pinterest! Please use the following verification code to complete your account setup:
-
-🔑 Verification Code: {code}
-
-This code will expire in 10 minutes for your security.
-
-If you didn't create a Pinterest account, please ignore this email.
-
-Best regards,
-The Pinterest Team
-
----
-This is an automated message. Please do not reply to this email.
-        """
+        # Email data
+        email_data = {
+            "from": "Pinterest <onboarding@resend.dev>",  # Resend's default sender
+            "to": [email],
+            "subject": "Pinterest - Email Verification Code",
+            "html": f"""
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                <div style="text-align: center; margin-bottom: 30px;">
+                    <h1 style="color: #E60023; margin: 0;">Pinterest</h1>
+                </div>
+                
+                <h2 style="color: #333; margin-bottom: 20px;">Welcome to Pinterest!</h2>
+                
+                <p style="color: #555; font-size: 16px; line-height: 1.5;">
+                    Please use the following verification code to complete your account setup:
+                </p>
+                
+                <div style="background: #f8f9fa; border-radius: 8px; padding: 20px; text-align: center; margin: 30px 0;">
+                    <div style="font-size: 32px; font-weight: bold; color: #E60023; letter-spacing: 5px;">
+                        {code}
+                    </div>
+                </div>
+                
+                <p style="color: #666; font-size: 14px;">
+                    This code will expire in <strong>10 minutes</strong> for your security.
+                </p>
+                
+                <p style="color: #666; font-size: 14px;">
+                    If you didn't create a Pinterest account, please ignore this email.
+                </p>
+                
+                <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+                
+                <p style="color: #999; font-size: 12px; text-align: center;">
+                    This is an automated message from Pinterest. Please do not reply to this email.
+                </p>
+            </div>
+            """
+        }
         
-        msg.attach(MIMEText(body, 'plain'))
+        # Send request to Resend
+        headers = {
+            "Authorization": f"Bearer {RESEND_API_KEY}",
+            "Content-Type": "application/json"
+        }
         
-        # Send email
-        server = smtplib.SMTP(EMAIL_HOST, EMAIL_PORT)
-        server.starttls()
-        server.login(EMAIL_USER, EMAIL_PASSWORD)
-        server.send_message(msg)
-        server.quit()
+        response = requests.post(url, json=email_data, headers=headers)
         
-        print(f"Verification email sent to {email}")
-        return True
+        if response.status_code == 200:
+            print(f"✅ Verification email sent to {email}")
+            return True
+        else:
+            print(f"❌ Failed to send email: {response.status_code} - {response.text}")
+            return False
         
     except Exception as e:
-        print(f"Failed to send email: {e}")
+        print(f"❌ Email sending error: {e}")
         return False
 
 # Generate random verification code
