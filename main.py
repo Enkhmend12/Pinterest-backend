@@ -443,11 +443,9 @@ def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db
         # Check if user exists
         user = db.query(User).filter(User.email == email).first()
         if not user:
-            # Don't reveal if email exists or not for security
-            return {
-                "message": "If this email is registered, you will receive a password reset code.",
-                "code": "123456"  # For testing - remove in production
-            }
+            # For testing: still send email even if user doesn't exist
+            # In production, you might want to return the generic message
+            pass
         
         # Generate verification code
         code = generate_verification_code()
