@@ -267,8 +267,9 @@ def create_user(user_data: UserCreate, db: Session = Depends(get_db)):
     Receives an email and password, hashes the password, and saves to the 'users' table.
     """
     try:
-        # Hash the password
-        hashed_password = pwd_context.hash(user_data.password)
+        # Hash the password (truncate to 72 bytes for bcrypt compatibility)
+        password = user_data.password[:72] if len(user_data.password) > 72 else user_data.password
+        hashed_password = pwd_context.hash(password)
         
         # Create user with hashed password
         new_user = User(email=user_data.email, hashed_password=hashed_password)
@@ -523,8 +524,9 @@ def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db))
                 detail="User not found"
             )
         
-        # Hash the new password
-        hashed_password = pwd_context.hash(new_password)
+        # Hash the new password (truncate to 72 bytes for bcrypt compatibility)
+        password = new_password[:72] if len(new_password) > 72 else new_password
+        hashed_password = pwd_context.hash(password)
         
         # Update user's password
         user.hashed_password = hashed_password
