@@ -78,6 +78,14 @@ class VerifyCodeRequest(BaseModel):
     email: str
     code: str
 
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+class ResetPasswordRequest(BaseModel):
+    email: str
+    code: str
+    new_password: str
+
 # Email sending function with Resend
 def send_verification_email(email: str, code: str):
     """Send verification code via email using Resend"""
@@ -146,6 +154,76 @@ def send_verification_email(email: str, code: str):
         
     except Exception as e:
         print(f"❌ Email sending error: {e}")
+        return False
+
+# Email sending function for password reset
+def send_password_reset_email(email: str, code: str):
+    """Send password reset code via email using Resend"""
+    try:
+        if not RESEND_API_KEY:
+            print("Warning: Resend API key not configured")
+            return False
+            
+        # Resend API endpoint
+        url = "https://api.resend.com/emails"
+        
+        # Email data
+        email_data = {
+            "from": "Pinterest <onboarding@resend.dev>",  # Resend's testing sender
+            "to": [email],
+            "subject": "Pinterest - Password Reset Code",
+            "html": f"""
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                <div style="text-align: center; margin-bottom: 30px;">
+                    <h1 style="color: #E60023; margin: 0;">Pinterest</h1>
+                </div>
+                
+                <h2 style="color: #333; margin-bottom: 20px;">Reset Your Password</h2>
+                
+                <p style="color: #555; font-size: 16px; line-height: 1.5;">
+                    You requested to reset your password. Use the following code to create a new password:
+                </p>
+                
+                <div style="background: #f8f9fa; border-radius: 8px; padding: 20px; text-align: center; margin: 30px 0;">
+                    <div style="font-size: 32px; font-weight: bold; color: #E60023; letter-spacing: 5px;">
+                        {code}
+                    </div>
+                </div>
+                
+                <p style="color: #666; font-size: 14px;">
+                    This code will expire in <strong>10 minutes</strong> for your security.
+                </p>
+                
+                <p style="color: #666; font-size: 14px;">
+                    If you didn't request a password reset, please ignore this email.
+                </p>
+                
+                <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+                
+                <p style="color: #999; font-size: 12px; text-align: center;">
+                    This is an automated message from Pinterest. Please do not reply to this email.
+                </p>
+            </div>
+            """
+        }
+        
+        # Send request to Resend
+        headers = {
+            "Authorization": f"Bearer {RESEND_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        response = requests.post(url, json=email_data, headers=headers)
+        
+        if response.status_code == 200:
+            print(f"✅ Password reset email sent to {email}")
+            return True
+        else:
+            print(f"❌ Failed to send password reset email: {response.status_code} - {response.text}")
+            return False
+        
+    except Exception as e:
+        print(f"❌ Password reset email sending error: {e}")
         return False
 
 # Generate random verification code
@@ -352,3 +430,119 @@ def verify_code(request: VerifyCodeRequest, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error verifying code: {e}")
+
+# API endpoint to request password reset
+@app.post("/forgot-password", status_code=status.HTTP_200_OK)
+def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    """
+    Sends a password reset code to the user's email.
+    """
+    try:
+        email = request.email
+        
+        # Check if user exists
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            # Don't reveal if email exists or not for security
+            return {
+                "message": "If this email is registered, you will receive a password reset code.",
+                "code": "123456"  # For testing - remove in production
+            }
+        
+        # Generate verification code
+        code = generate_verification_code()
+        expires_at = datetime.now() + timedelta(minutes=10)
+        
+        # Delete any existing codes for this email
+        db.query(EmailVerificationCode).filter(EmailVerificationCode.email == email).delete()
+        
+        # Save new code to database
+        verification_record = EmailVerificationCode(
+            email=email,
+            code=code,
+            expires_at=expires_at,
+            is_used="false"
+        )
+        db.add(verification_record)
+        db.commit()
+        
+        # Send password reset email
+        email_sent = send_password_reset_email(email, code)
+        
+        if email_sent:
+            return {
+                "message": "Password reset code sent to your email!",
+                "code": code,  # Remove this in production!
+                "expires_in_minutes": 10
+            }
+        else:
+            return {
+                "message": "Password reset code generated (email service unavailable)",
+                "code": code,  # For testing purposes
+                "expires_in_minutes": 10
+            }
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error sending password reset code: {e}")
+
+# API endpoint to reset password with verification code
+@app.post("/reset-password", status_code=status.HTTP_200_OK)
+def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
+    """
+    Resets the user's password using the verification code.
+    """
+    try:
+        email = request.email
+        code = request.code
+        new_password = request.new_password
+        
+        # Find the verification record
+        verification_record = db.query(EmailVerificationCode).filter(
+            EmailVerificationCode.email == email,
+            EmailVerificationCode.code == code,
+            EmailVerificationCode.is_used == "false"
+        ).first()
+        
+        if not verification_record:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired verification code"
+            )
+        
+        # Check if code has expired
+        if datetime.now() > verification_record.expires_at:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Verification code has expired"
+            )
+        
+        # Find the user
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Hash the new password
+        hashed_password = pwd_context.hash(new_password)
+        
+        # Update user's password
+        user.hashed_password = hashed_password
+        db.commit()
+        
+        # Mark verification code as used
+        verification_record.is_used = "true"
+        db.commit()
+        
+        return {
+            "message": "Password reset successfully!",
+            "success": True
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error resetting password: {e}")
