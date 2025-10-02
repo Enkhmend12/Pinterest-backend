@@ -1,5 +1,5 @@
 
-# main.py
+# main.py - Updated with password truncation fix
 
 import os
 import sys
