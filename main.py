@@ -268,7 +268,11 @@ def create_user(user_data: UserCreate, db: Session = Depends(get_db)):
     """
     try:
         # Hash the password (truncate to 72 bytes for bcrypt compatibility)
-        password = user_data.password[:72] if len(user_data.password) > 72 else user_data.password
+        password = user_data.password
+        if len(password.encode('utf-8')) > 72:
+            # Truncate to 72 bytes, not characters
+            password_bytes = password.encode('utf-8')[:72]
+            password = password_bytes.decode('utf-8', errors='ignore')
         hashed_password = pwd_context.hash(password)
         
         # Create user with hashed password
@@ -525,7 +529,11 @@ def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db))
             )
         
         # Hash the new password (truncate to 72 bytes for bcrypt compatibility)
-        password = new_password[:72] if len(new_password) > 72 else new_password
+        password = new_password
+        if len(password.encode('utf-8')) > 72:
+            # Truncate to 72 bytes, not characters
+            password_bytes = password.encode('utf-8')[:72]
+            password = password_bytes.decode('utf-8', errors='ignore')
         hashed_password = pwd_context.hash(password)
         
         # Update user's password
