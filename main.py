@@ -59,8 +59,8 @@ class EmailVerificationCode(Base):
     expires_at = Column(DateTime, nullable=False)
     is_used = Column(String, default="false")  # Using string for SQLite compatibility
 
-# Create all tables in the database
-Base.metadata.create_all(bind=engine)
+# Note: Do NOT create tables yet; models continue below. We'll call
+# Base.metadata.create_all(bind=engine) after all models are defined.
 
 # Define the data model for the incoming request
 class UserCreate(BaseModel):
@@ -115,6 +115,9 @@ class PaymentCardOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+# Create all tables in the database (after all models above are defined)
+Base.metadata.create_all(bind=engine)
 
 # Email sending function with Resend
 def send_verification_email(email: str, code: str):
