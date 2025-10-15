@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from typing import Iterator
 from passlib.context import CryptContext
 
-from sqlalchemy import create_engine, Column, Integer, String, text, DateTime
+from sqlalchemy import create_engine, Column, Integer, String, text, DateTime, Boolean
 from sqlalchemy.orm import sessionmaker,  Session
 from sqlalchemy.ext.declarative import declarative_base
 from dotenv import load_dotenv
@@ -86,12 +86,41 @@ class ResetPasswordRequest(BaseModel):
     code: str
     new_password: str
 
+# ---- Payment Cards ----
+class PaymentCard(Base):
+    __tablename__ = "payment_cards"
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, index=True)  # owner by email for simplicity
+    company = Column(String, nullable=False)
+    amount_tug = Column(Integer, nullable=False)  # store in smallest unit (₮)
+    image_url = Column(String, nullable=True)
+    isPaid = Column(Boolean, default=False)
+    created_at = Column(DateTime, server_default=text('NOW()'))
+
+class PaymentCardCreate(BaseModel):
+    email: str
+    company: str
+    amount_tug: int
+    image_url: str | None = None
+    isPaid: bool
+
+class PaymentCardOut(BaseModel):
+    id: int
+    email: str
+    company: str
+    amount_tug: int
+    image_url: str | None
+    isPaid: bool
+    created_at: datetime | None = None
+
+    class Config:
+        from_attributes = True
+
 # Email sending function with Resend
 def send_verification_email(email: str, code: str):
     """Send verification code via email using Resend"""
     try:
         if not RESEND_API_KEY:
-            print("Warning: Resend API key not configured")
             return False
             
         # Resend API endpoint
@@ -146,14 +175,11 @@ def send_verification_email(email: str, code: str):
         response = requests.post(url, json=email_data, headers=headers)
         
         if response.status_code == 200:
-            print(f"✅ Verification email sent to {email}")
             return True
         else:
-            print(f"❌ Failed to send email: {response.status_code} - {response.text}")
             return False
         
     except Exception as e:
-        print(f"❌ Email sending error: {e}")
         return False
 
 # Email sending function for password reset
@@ -161,7 +187,6 @@ def send_password_reset_email(email: str, code: str):
     """Send password reset code via email using Resend"""
     try:
         if not RESEND_API_KEY:
-            print("Warning: Resend API key not configured")
             return False
             
         # Resend API endpoint
@@ -216,14 +241,11 @@ def send_password_reset_email(email: str, code: str):
         response = requests.post(url, json=email_data, headers=headers)
         
         if response.status_code == 200:
-            print(f"✅ Password reset email sent to {email}")
             return True
         else:
-            print(f"❌ Failed to send password reset email: {response.status_code} - {response.text}")
             return False
         
     except Exception as e:
-        print(f"❌ Password reset email sending error: {e}")
         return False
 
 # Generate random verification code
@@ -269,8 +291,6 @@ def create_user(user_data: UserCreate, db: Session = Depends(get_db)):
     try:
         # Hash the password (truncate to 72 bytes for bcrypt compatibility)
         password = user_data.password
-        print(f"Original password: {password}")
-        print(f"Password length in bytes: {len(password.encode('utf-8'))}")
         
         if len(password.encode('utf-8')) > 72:
             # Truncate to 72 bytes, not characters
@@ -565,3 +585,30 @@ def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db))
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error resetting password: {e}")
+
+# ---- Payment Card Endpoints ----
+@app.get("/payment-cards", response_model=list[PaymentCardOut])
+def list_payment_cards(email: str, db: Session = Depends(get_db)):
+    try:
+        cards = db.query(PaymentCard).filter(PaymentCard.email == email).order_by(PaymentCard.id.desc()).all()
+        return cards
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching cards: {e}")
+
+@app.post("/payment-cards", response_model=PaymentCardOut, status_code=201)
+def create_payment_card(card: PaymentCardCreate, db: Session = Depends(get_db)):
+    try:
+        new_card = PaymentCard(
+            email=card.email,
+            company=card.company,
+            amount_tug=card.amount_tug,
+            image_url=card.image_url,
+            isPaid = card.isPaid,
+        )
+        db.add(new_card)
+        db.commit()
+        db.refresh(new_card)
+        return new_card
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Error creating card: {e}")
