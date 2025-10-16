@@ -8,7 +8,7 @@ import requests
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Iterator
 from passlib.context import CryptContext
 
@@ -103,7 +103,7 @@ class PaymentCardCreate(BaseModel):
     amount_tug: int
     image_url: str | None = None
     isPaid: bool = False
-
+    
 class PaymentCardOut(BaseModel):
     id: int
     email: str
