@@ -102,7 +102,7 @@ class PaymentCardCreate(BaseModel):
     company: str
     amount_tug: int
     image_url: str | None = None
-    isPaid: bool
+    isPaid: bool = False
 
 class PaymentCardOut(BaseModel):
     id: int
