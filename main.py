@@ -2,6 +2,8 @@
 # main.py - Updated with password truncation fix - FORCE REDEPLOY
 
 import os
+import uuid
+import boto3
 import sys
 import random
 import requests
@@ -267,6 +269,44 @@ def get_db() -> Iterator[Session]:
 # Initialize the FastAPI application
 app = FastAPI()
 
+R2_ENDPOINT = os.environ["R2_ENDPOINT"]
+R2_ACCESS_KEY_ID = os.environ["R2_ACCESS_KEY_ID"]
+R2_SECRET_ACCESS_KEY = os.environ["R2_SECRET_ACCESS_KEY"]
+R2_BUCKET = os.environ["R2_BUCKET"]
+R2_PUBLIC_BASE_URL = os.environ["R2_PUBLIC_BASE_URL"]
+R2_REGION = os.environ.get("R2_REGION", "auto")
+
+# --- Initialize boto3 S3 client for R2 ---
+s3 = boto3.client(
+    "s3",
+    endpoint_url=R2_ENDPOINT,
+    aws_access_key_id=R2_ACCESS_KEY_ID,
+    aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+    region_name=R2_REGION,
+)
+
+# --- Pydantic model for input ---
+class PresignIn(BaseModel):
+    content_type: str
+
+# --- Endpoint to get a presigned upload URL and public URL ---
+@app.post("/images/presign")
+def presign(body: PresignIn):
+    key = f"cards/{uuid.uuid4()}"
+    try:
+        url = s3.generate_presigned_url(
+            ClientMethod="put_object",
+            Params={"Bucket": R2_BUCKET, "Key": key, "ContentType": body.content_type},
+            ExpiresIn=300,  # Link expires in 5 minutes
+        )
+        public_url = f"{R2_PUBLIC_BASE_URL}/{key}"
+        return {
+            "upload_url": url,       # Use this to PUT the image bytes
+            "public_url": public_url,  # Save this to display/download the image
+            "key": key
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Presign error: {str(e)}")
 # CORS: allow the Flutter app (and later your domain) to call this API from the browser/app
 app.add_middleware(
     CORSMiddleware,
